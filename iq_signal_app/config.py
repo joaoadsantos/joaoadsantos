@@ -13,7 +13,7 @@ class AppConfig:
     candle_count: int = 60
     threshold: float = 0.75
     cooldown_seconds: int = 45
-    roi: tuple[int, int, int, int] = (100, 100, 900, 500)
+    chart_monitor_index: int = 1
     csv_path: str = "iq_signal_app/data/events.csv"
 
     @classmethod
@@ -21,19 +21,13 @@ class AppConfig:
         cfg_path = Path(path)
         if not cfg_path.exists():
             return cls()
+
         data: dict[str, Any] = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-        roi_raw = data.get("roi", {})
-        roi = (
-            int(roi_raw.get("x", 100)),
-            int(roi_raw.get("y", 100)),
-            int(roi_raw.get("width", 900)),
-            int(roi_raw.get("height", 500)),
-        )
         return cls(
             capture_interval_ms=int(data.get("capture_interval_ms", 200)),
             candle_count=int(data.get("candle_count", 60)),
             threshold=float(data.get("threshold", 0.75)),
             cooldown_seconds=int(data.get("cooldown_seconds", 45)),
-            roi=roi,
+            chart_monitor_index=int(data.get("chart_monitor_index", 1)),
             csv_path=str(data.get("csv_path", "iq_signal_app/data/events.csv")),
         )

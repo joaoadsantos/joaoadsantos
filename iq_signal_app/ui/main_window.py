@@ -8,7 +8,7 @@ from tkinter import BOTH, LEFT, RIGHT, Button, Entry, Frame, Label, StringVar, T
 
 from iq_signal_app.alerts.popup import show_signal_popup
 from iq_signal_app.alerts.sound import beep
-from iq_signal_app.capture.screen import ROI, ScreenCapturer
+from iq_signal_app.capture.screen import ScreenCapturer
 from iq_signal_app.config import AppConfig
 from iq_signal_app.engine.cooldown import Cooldown
 from iq_signal_app.engine.scoring import evaluate_signal
@@ -21,11 +21,12 @@ class MainWindow:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.root = Tk()
-        self.root.title("IQ Signal App (MVP)")
-        self.root.geometry("620x420")
+        self.root.title("IQ Signal App (Auto Monitor)")
+        self.root.geometry("560x320")
 
         self.status_var = StringVar(value="Parado")
         self.signal_var = StringVar(value="Sem sinal")
+        self.monitor_var = StringVar(value="-")
 
         self._running = False
         self._worker: threading.Thread | None = None
@@ -34,38 +35,20 @@ class MainWindow:
         self.cooldown = Cooldown(config.cooldown_seconds)
         self.repo = EventRepository(config.csv_path)
 
-        self.roi_x = Entry(self.root, width=6)
-        self.roi_y = Entry(self.root, width=6)
-        self.roi_w = Entry(self.root, width=6)
-        self.roi_h = Entry(self.root, width=6)
-        self.threshold_entry = Entry(self.root, width=6)
-
+        self.threshold_entry = Entry(self.root, width=8)
         self._build_ui()
 
     def _build_ui(self) -> None:
-        top = Frame(self.root)
-        top.pack(fill=BOTH, padx=10, pady=10)
+        info = Frame(self.root)
+        info.pack(fill=BOTH, padx=10, pady=10)
 
-        Label(top, text="ROI x").pack(side=LEFT)
-        self.roi_x.pack(side=LEFT)
-        Label(top, text="y").pack(side=LEFT)
-        self.roi_y.pack(side=LEFT)
-        Label(top, text="w").pack(side=LEFT)
-        self.roi_w.pack(side=LEFT)
-        Label(top, text="h").pack(side=LEFT)
-        self.roi_h.pack(side=LEFT)
+        Label(info, text=f"Monitor do gráfico (automático): {self.config.chart_monitor_index}").pack(anchor="w")
+        Label(info, text="Região capturada:").pack(anchor="w")
+        Label(info, textvariable=self.monitor_var, fg="gray").pack(anchor="w")
 
-        for entry, value in [
-            (self.roi_x, self.config.roi[0]),
-            (self.roi_y, self.config.roi[1]),
-            (self.roi_w, self.config.roi[2]),
-            (self.roi_h, self.config.roi[3]),
-        ]:
-            entry.insert(0, str(value))
-
-        bottom = Frame(self.root)
-        bottom.pack(fill=BOTH, padx=10, pady=10)
-        Label(bottom, text="Threshold").pack(side=LEFT)
+        threshold = Frame(self.root)
+        threshold.pack(fill=BOTH, padx=10, pady=10)
+        Label(threshold, text="Threshold").pack(side=LEFT)
         self.threshold_entry.pack(side=LEFT)
         self.threshold_entry.insert(0, str(self.config.threshold))
 
@@ -79,14 +62,6 @@ class MainWindow:
         Label(self.root, textvariable=self.status_var).pack(anchor="w", padx=10)
         Label(self.root, text="Último sinal:").pack(anchor="w", padx=10)
         Label(self.root, textvariable=self.signal_var, fg="blue").pack(anchor="w", padx=10)
-
-    def get_roi(self) -> ROI:
-        return ROI(
-            x=int(self.roi_x.get()),
-            y=int(self.roi_y.get()),
-            width=int(self.roi_w.get()),
-            height=int(self.roi_h.get()),
-        )
 
     def get_threshold(self) -> float:
         try:
@@ -112,8 +87,11 @@ class MainWindow:
 
     def _loop(self) -> None:
         while self._running:
-            roi = self.get_roi()
-            frame = self.capturer.capture(roi)
+            monitor = self.capturer.get_monitor_region(self.config.chart_monitor_index)
+            monitor_text = f"x={monitor.x}, y={monitor.y}, w={monitor.width}, h={monitor.height}"
+            self.root.after(0, self.monitor_var.set, monitor_text)
+
+            frame = self.capturer.capture_monitor(self.config.chart_monitor_index)
             gray = preprocess_frame(frame)
             candles = extract_candles(gray, self.config.candle_count)
 
@@ -123,15 +101,14 @@ class MainWindow:
 
             result = evaluate_signal(closes, highs, lows)
             best_prob = max(result.prob_call, result.prob_put)
-            text = f"{result.action} | prob={best_prob:.2%} | score={result.score:.3f}"
-            self.root.after(0, self.signal_var.set, text)
+            self.root.after(0, self.signal_var.set, result.action)
 
             threshold = self.get_threshold()
             triggered = False
-            if best_prob >= threshold and self.cooldown.ready():
+            if best_prob >= threshold and result.action in {"CALL", "PUT"} and self.cooldown.ready():
                 triggered = True
                 self.cooldown.trigger()
-                self.root.after(0, self._alert_and_minimize, result.action, best_prob)
+                self.root.after(0, self._alert_and_minimize, result.action)
 
             self.repo.append(
                 {
@@ -141,13 +118,14 @@ class MainWindow:
                     "prob_call": f"{result.prob_call:.5f}",
                     "prob_put": f"{result.prob_put:.5f}",
                     "triggered": str(triggered),
+                    "monitor_index": str(self.config.chart_monitor_index),
                 }
             )
             time.sleep(self.config.capture_interval_ms / 1000)
 
-    def _alert_and_minimize(self, action: str, probability: float) -> None:
+    def _alert_and_minimize(self, action: str) -> None:
         beep()
-        ok = show_signal_popup(self.root, action, probability)
+        ok = show_signal_popup(self.root, action)
         if ok:
             self.root.iconify()
 
