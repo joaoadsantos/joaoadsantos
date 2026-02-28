@@ -33,5 +33,5 @@ python main.py
 - Processamento em tempo real dos candles da imagem.
 - Cálculo de sinal com saída simplificada: **PUT** ou **CALL**.
 - Filtros de sensibilidade com confirmação + score mínimo + delta mínimo.
-- Alerta sonoro + popup modal; ao clicar OK, o app minimiza.
+- Alerta sonoro + destaque do sinal em label dentro da janela (sem popup e sem minimizar).
 - Log em CSV para calibração (`iq_signal_app/data/events.csv`).

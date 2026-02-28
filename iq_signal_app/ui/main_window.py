@@ -7,7 +7,6 @@ from datetime import datetime
 import numpy as np
 from tkinter import BOTH, LEFT, RIGHT, Button, Entry, Frame, Label, StringVar, Tk
 
-from iq_signal_app.alerts.popup import show_signal_popup
 from iq_signal_app.alerts.sound import beep
 from iq_signal_app.capture.screen import ScreenCapturer
 from iq_signal_app.config import AppConfig
@@ -23,10 +22,11 @@ class MainWindow:
         self.config = config
         self.root = Tk()
         self.root.title("IQ Signal App (Auto Monitor)")
-        self.root.geometry("620x350")
+        self.root.geometry("620x380")
 
         self.status_var = StringVar(value="Parado")
         self.signal_var = StringVar(value="Sem sinal")
+        self.alert_var = StringVar(value="Aguardando sinal...")
         self.monitor_var = StringVar(value="-")
 
         self._running = False
@@ -67,6 +67,8 @@ class MainWindow:
         Label(self.root, textvariable=self.status_var).pack(anchor="w", padx=10)
         Label(self.root, text="Último sinal:").pack(anchor="w", padx=10)
         Label(self.root, textvariable=self.signal_var, fg="blue").pack(anchor="w", padx=10)
+        Label(self.root, text="Sinal confirmado:").pack(anchor="w", padx=10, pady=(12, 0))
+        Label(self.root, textvariable=self.alert_var, fg="red", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=10)
 
     def get_threshold(self) -> float:
         try:
@@ -140,7 +142,7 @@ class MainWindow:
                 if should_alert:
                     triggered = True
                     self.cooldown.trigger()
-                    self.root.after(0, self._alert_and_minimize, result.action)
+                    self.root.after(0, self._emit_signal_label, result.action, best_prob)
 
                 self.repo.append(
                     {
@@ -161,11 +163,9 @@ class MainWindow:
 
             time.sleep(self.config.capture_interval_ms / 1000)
 
-    def _alert_and_minimize(self, action: str) -> None:
+    def _emit_signal_label(self, action: str, probability: float) -> None:
         beep()
-        ok = show_signal_popup(self.root, action)
-        if ok:
-            self.root.iconify()
+        self.alert_var.set(f"{action} confirmado ({probability:.1%})")
 
     def run(self) -> None:
         self.root.mainloop()
