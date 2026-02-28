@@ -87,40 +87,44 @@ class MainWindow:
 
     def _loop(self) -> None:
         while self._running:
-            monitor = self.capturer.get_monitor_region(self.config.chart_monitor_index)
-            monitor_text = f"x={monitor.x}, y={monitor.y}, w={monitor.width}, h={monitor.height}"
-            self.root.after(0, self.monitor_var.set, monitor_text)
+            try:
+                monitor = self.capturer.get_monitor_region(self.config.chart_monitor_index)
+                monitor_text = f"x={monitor.x}, y={monitor.y}, w={monitor.width}, h={monitor.height}"
+                self.root.after(0, self.monitor_var.set, monitor_text)
 
-            frame = self.capturer.capture_monitor(self.config.chart_monitor_index)
-            gray = preprocess_frame(frame)
-            candles = extract_candles(gray, self.config.candle_count)
+                frame = self.capturer.capture_monitor(self.config.chart_monitor_index)
+                gray = preprocess_frame(frame)
+                candles = extract_candles(gray, self.config.candle_count)
 
-            closes = [c.close for c in candles]
-            highs = [c.high for c in candles]
-            lows = [c.low for c in candles]
+                closes = [c.close for c in candles]
+                highs = [c.high for c in candles]
+                lows = [c.low for c in candles]
 
-            result = evaluate_signal(closes, highs, lows)
-            best_prob = max(result.prob_call, result.prob_put)
-            self.root.after(0, self.signal_var.set, result.action)
+                result = evaluate_signal(closes, highs, lows)
+                best_prob = max(result.prob_call, result.prob_put)
+                self.root.after(0, self.signal_var.set, result.action)
 
-            threshold = self.get_threshold()
-            triggered = False
-            if best_prob >= threshold and result.action in {"CALL", "PUT"} and self.cooldown.ready():
-                triggered = True
-                self.cooldown.trigger()
-                self.root.after(0, self._alert_and_minimize, result.action)
+                threshold = self.get_threshold()
+                triggered = False
+                if best_prob >= threshold and result.action in {"CALL", "PUT"} and self.cooldown.ready():
+                    triggered = True
+                    self.cooldown.trigger()
+                    self.root.after(0, self._alert_and_minimize, result.action)
 
-            self.repo.append(
-                {
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "action": result.action,
-                    "score": f"{result.score:.5f}",
-                    "prob_call": f"{result.prob_call:.5f}",
-                    "prob_put": f"{result.prob_put:.5f}",
-                    "triggered": str(triggered),
-                    "monitor_index": str(self.config.chart_monitor_index),
-                }
-            )
+                self.repo.append(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "action": result.action,
+                        "score": f"{result.score:.5f}",
+                        "prob_call": f"{result.prob_call:.5f}",
+                        "prob_put": f"{result.prob_put:.5f}",
+                        "triggered": str(triggered),
+                        "monitor_index": str(self.config.chart_monitor_index),
+                    }
+                )
+            except Exception as exc:
+                self.root.after(0, self.status_var.set, f"Erro: {exc}")
+
             time.sleep(self.config.capture_interval_ms / 1000)
 
     def _alert_and_minimize(self, action: str) -> None:
