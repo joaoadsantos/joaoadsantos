@@ -19,12 +19,7 @@ class MonitorRegion:
 
 
 class ScreenCapturer:
-    """Thread-safe screen capturer.
-
-    On Windows, MSS keeps thread-local handles. Reusing one MSS instance across
-    threads can raise: AttributeError '_thread._local' has no attribute 'srcdc'.
-    To avoid that, each call creates its own MSS context in the current thread.
-    """
+    """Thread-safe screen capturer."""
 
     def get_monitor_region(self, monitor_index: int) -> MonitorRegion:
         if mss:
@@ -40,7 +35,6 @@ class ScreenCapturer:
                     height=int(monitor["height"]),
                 )
 
-        # fallback assuming principal monitor 1920x1080
         return MonitorRegion(x=0, y=0, width=1920, height=1080)
 
     def capture_monitor(self, monitor_index: int) -> np.ndarray:
@@ -56,7 +50,6 @@ class ScreenCapturer:
                 frame = np.array(sct.grab(mon))
                 return frame[:, :, :3]
 
-        # fallback using PIL if mss unavailable
         from PIL import ImageGrab
 
         img = ImageGrab.grab(
@@ -68,3 +61,12 @@ class ScreenCapturer:
             )
         )
         return np.array(img)
+
+    def crop_center(self, frame: np.ndarray, ratio: float) -> np.ndarray:
+        ratio = min(1.0, max(0.2, ratio))
+        h, w = frame.shape[:2]
+        crop_w = int(w * ratio)
+        crop_h = int(h * ratio)
+        x0 = (w - crop_w) // 2
+        y0 = (h - crop_h) // 2
+        return frame[y0 : y0 + crop_h, x0 : x0 + crop_w]

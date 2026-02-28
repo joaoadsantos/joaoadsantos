@@ -17,6 +17,9 @@ class EventRepository:
             "prob_put",
             "triggered",
             "monitor_index",
+            "confirm_count",
+            "score_points",
+            "frame_delta",
         ]
         if not self.path.exists():
             with self.path.open("w", newline="", encoding="utf-8") as f:

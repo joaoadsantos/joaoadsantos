@@ -11,9 +11,13 @@ import yaml
 class AppConfig:
     capture_interval_ms: int = 200
     candle_count: int = 60
-    threshold: float = 0.75
-    cooldown_seconds: int = 45
+    threshold: float = 0.78
+    cooldown_seconds: int = 20
     chart_monitor_index: int = 1
+    center_crop_ratio: float = 0.70
+    confirm_ticks: int = 2
+    min_score_alert: int = 25
+    min_frame_delta: float = 0.50
     csv_path: str = "iq_signal_app/data/events.csv"
 
     @classmethod
@@ -26,8 +30,12 @@ class AppConfig:
         return cls(
             capture_interval_ms=int(data.get("capture_interval_ms", 200)),
             candle_count=int(data.get("candle_count", 60)),
-            threshold=float(data.get("threshold", 0.75)),
-            cooldown_seconds=int(data.get("cooldown_seconds", 45)),
+            threshold=float(data.get("threshold", 0.78)),
+            cooldown_seconds=int(data.get("cooldown_seconds", 20)),
             chart_monitor_index=int(data.get("chart_monitor_index", 1)),
+            center_crop_ratio=float(data.get("center_crop_ratio", 0.70)),
+            confirm_ticks=int(data.get("confirm_ticks", 2)),
+            min_score_alert=int(data.get("min_score_alert", 25)),
+            min_frame_delta=float(data.get("min_frame_delta", 0.50)),
             csv_path=str(data.get("csv_path", "iq_signal_app/data/events.csv")),
         )

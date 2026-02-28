@@ -4,6 +4,7 @@ import threading
 import time
 from datetime import datetime
 
+import numpy as np
 from tkinter import BOTH, LEFT, RIGHT, Button, Entry, Frame, Label, StringVar, Tk
 
 from iq_signal_app.alerts.popup import show_signal_popup
@@ -22,7 +23,7 @@ class MainWindow:
         self.config = config
         self.root = Tk()
         self.root.title("IQ Signal App (Auto Monitor)")
-        self.root.geometry("560x320")
+        self.root.geometry("620x350")
 
         self.status_var = StringVar(value="Parado")
         self.signal_var = StringVar(value="Sem sinal")
@@ -30,6 +31,9 @@ class MainWindow:
 
         self._running = False
         self._worker: threading.Thread | None = None
+        self._last_action = "NONE"
+        self._confirm_count = 0
+        self._prev_gray: np.ndarray | None = None
 
         self.capturer = ScreenCapturer()
         self.cooldown = Cooldown(config.cooldown_seconds)
@@ -43,6 +47,7 @@ class MainWindow:
         info.pack(fill=BOTH, padx=10, pady=10)
 
         Label(info, text=f"Monitor do gráfico (automático): {self.config.chart_monitor_index}").pack(anchor="w")
+        Label(info, text=f"Recorte central automático: {self.config.center_crop_ratio:.0%}").pack(anchor="w")
         Label(info, text="Região capturada:").pack(anchor="w")
         Label(info, textvariable=self.monitor_var, fg="gray").pack(anchor="w")
 
@@ -92,7 +97,8 @@ class MainWindow:
                 monitor_text = f"x={monitor.x}, y={monitor.y}, w={monitor.width}, h={monitor.height}"
                 self.root.after(0, self.monitor_var.set, monitor_text)
 
-                frame = self.capturer.capture_monitor(self.config.chart_monitor_index)
+                frame_full = self.capturer.capture_monitor(self.config.chart_monitor_index)
+                frame = self.capturer.crop_center(frame_full, self.config.center_crop_ratio)
                 gray = preprocess_frame(frame)
                 candles = extract_candles(gray, self.config.candle_count)
 
@@ -102,11 +108,36 @@ class MainWindow:
 
                 result = evaluate_signal(closes, highs, lows)
                 best_prob = max(result.prob_call, result.prob_put)
-                self.root.after(0, self.signal_var.set, result.action)
+                score_points = int(abs(result.score) * 100)
+
+                frame_delta = 1.0
+                if self._prev_gray is not None and self._prev_gray.shape == gray.shape:
+                    frame_delta = float(np.mean(np.abs(gray.astype(np.float32) - self._prev_gray.astype(np.float32))) / 255.0)
+                self._prev_gray = gray
+
+                if result.action == self._last_action:
+                    self._confirm_count += 1
+                else:
+                    self._last_action = result.action
+                    self._confirm_count = 1
+
+                signal_text = (
+                    f"{result.action} | p={best_prob:.1%} | score={score_points} | "
+                    f"confirm={self._confirm_count}/{self.config.confirm_ticks} | delta={frame_delta:.2f}"
+                )
+                self.root.after(0, self.signal_var.set, signal_text)
 
                 threshold = self.get_threshold()
                 triggered = False
-                if best_prob >= threshold and result.action in {"CALL", "PUT"} and self.cooldown.ready():
+                should_alert = (
+                    result.action in {"CALL", "PUT"}
+                    and best_prob >= threshold
+                    and self._confirm_count >= self.config.confirm_ticks
+                    and score_points >= self.config.min_score_alert
+                    and frame_delta >= self.config.min_frame_delta
+                    and self.cooldown.ready()
+                )
+                if should_alert:
                     triggered = True
                     self.cooldown.trigger()
                     self.root.after(0, self._alert_and_minimize, result.action)
@@ -120,6 +151,9 @@ class MainWindow:
                         "prob_put": f"{result.prob_put:.5f}",
                         "triggered": str(triggered),
                         "monitor_index": str(self.config.chart_monitor_index),
+                        "confirm_count": str(self._confirm_count),
+                        "score_points": str(score_points),
+                        "frame_delta": f"{frame_delta:.5f}",
                     }
                 )
             except Exception as exc:
