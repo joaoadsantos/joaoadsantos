@@ -1,0 +1,10 @@
+capture_interval_ms: 200
+candle_count: 60
+threshold: 0.75
+cooldown_seconds: 45
+roi:
+  x: 100
+  y: 100
+  width: 900
+  height: 500
+csv_path: iq_signal_app/data/events.csv
